@@ -2,6 +2,17 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+/*
+the implementation below aspires to implement two queues, one for data (jobs) waiting to be taken, and one for 
+waiter threads (workers) waiting to extract data. through mutual exclusion we try to achieve an invariant
+that only one queue can be non-empty at a given moment. for this reason, if for example a consumer (waiter)
+sees that the data queue is non-empty, it is free to assume that no other thread is waiting before it, avoiding 
+a barging condiition. thus, that consumer can avoid joining the queue and just grab the oldest piece of data
+waiting, effectively implementing a direct handoff approach. while this logical process was demonstrated on 
+the consumer side, it works both ways (a producer can avoid queueing by handing jobs directly to the oldest
+consumer).
+*/
+
 //------------------------------------------struct definitions--------------------------------------------------
 
 //----------------------data queue-------------------
@@ -177,6 +188,7 @@ void* dequeue(void)
     cnd_wait(&new_waiter.cond, &container->lock);
 
     //wake up (lock is re-acquired), cleanup condition variable, unlock and return
+    //incrementing the visitor count in locked mode guarantees thread safety
     container->visited_count++;
     cnd_destroy(&new_waiter.cond);
     ret = new_waiter.data;
@@ -188,5 +200,9 @@ void* dequeue(void)
 
 size_t visited(void)
 {
+    /*while we can provide correctness of the visitor count when writing it in dequeue, this 
+    method is lock free. thus, there is not guarantee that this method returns the right size
+    when concurrent threads exist (i.e. 'stale read'), but this is ok.
+    */
     return container->visited_count;
 }
